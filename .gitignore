@@ -1,0 +1,20 @@
+# secrets
+.env
+
+# environment / caches
+.venv/
+__pycache__/
+*.log
+
+# personal data and generated output
+people/
+Render*/
+spend.jsonl
+library.json
+*.tmp
+
+# loose images in the project root
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp

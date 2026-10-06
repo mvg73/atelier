@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dressmaker Try-On</title>
+<style>
+  :root { --bg:#1d1a17; --panel:#2a2520; --ink:#f2e9dc; --muted:#a89a87; --accent:#c9a24a; --err:#e07a6a; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.4 system-ui, sans-serif; }
+  header { padding:20px 24px; display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+           border-bottom:1px solid #3a332b; }
+  h1 { margin:0; font-family: Georgia, serif; font-weight:normal; color:var(--accent); }
+  h2 { font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 4px; }
+  .path { color:var(--muted); font-size:12px; margin-bottom:10px; word-break:break-all; }
+  main { padding:16px 24px; display:grid; gap:24px; }
+  section { background:var(--panel); border-radius:10px; padding:16px; }
+  .grid { display:flex; flex-wrap:wrap; gap:12px; }
+  .grid figure { margin:0; width:140px; position:relative; }
+  .grid img { width:140px; height:140px; object-fit:cover; border-radius:6px; display:block; background:#000; }
+  #people img, #trash img { height:210px; object-position:center top; }  /* portrait photos: show the whole person, never crop the head */
+  figcaption { font-size:11px; color:var(--muted); display:flex; align-items:flex-start; gap:4px; margin-top:3px; }
+  figcaption .names { flex:1; min-width:0; }
+  figcaption .names > div { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  figcaption .alias { color:var(--ink); font-size:13px; font-weight:600; }
+  .icon { background:transparent; color:var(--muted); border:1px solid #5a5045; border-radius:5px;
+          font-size:12px; padding:2px 6px; font-weight:normal; cursor:pointer; flex:none; }
+  .icon:hover { color:var(--ink); border-color:var(--accent); }
+  .pick figure { cursor:pointer; }
+  .pick img { outline:3px solid transparent; outline-offset:-3px; opacity:.55; transition:opacity .15s; }
+  .pick figure:hover img { opacity:.85; }
+  .pick figure.on img { outline-color:var(--accent); opacity:1; }
+  .pick figure::after { content:""; position:absolute; top:6px; right:6px; width:22px; height:22px; border-radius:50%;
+           border:2px solid #fff8; background:#0006; }
+  .pick figure.on::after { content:"✓"; background:var(--accent); border-color:var(--accent); color:#1d1a17;
+           font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .zoombtn { position:absolute; top:6px; left:6px; width:26px; height:26px; border-radius:50%; border:0; padding:0;
+           background:#000a; color:#fff; font-size:14px; line-height:26px; cursor:zoom-in; z-index:1; }
+  .zoombtn:hover { background:var(--accent); color:#1d1a17; }
+  .head { display:flex; align-items:center; gap:10px; }
+  .head h2 { margin:0; } .head .sel { color:var(--accent); font-size:13px; }
+  .head button.ghost { font-size:12px; padding:3px 10px; }
+  .actions { display:flex; gap:6px; margin-top:6px; }
+  .actions .icon { font-size:13px; padding:4px 10px; }
+  button { background:var(--accent); color:#1d1a17; border:0; border-radius:8px; padding:12px 28px;
+           font-size:18px; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid #5a5045; font-size:14px; padding:8px 14px; }
+  .bar { height:8px; background:#3a332b; border-radius:4px; overflow:hidden; width:280px; }
+  .bar div { height:100%; background:var(--accent); width:0; transition:width .3s; }
+  #quip { display:none; align-items:center; gap:10px; font-family:Georgia, serif; font-style:italic;
+          color:var(--accent); font-size:16px; min-height:24px; max-width:520px; }
+  #quip.on { display:flex; }
+  #quip .text { transition:opacity .4s; }
+  #quip .text.fade { opacity:0; }
+  .needle { position:relative; width:34px; height:20px; flex:none; }
+  .needle::before { content:"🪡"; position:absolute; left:0; top:-2px; font-size:18px; font-style:normal;
+          animation:stitch 1.1s ease-in-out infinite; }
+  .needle::after { content:""; position:absolute; left:2px; right:2px; bottom:3px; border-bottom:2px dashed var(--accent);
+          opacity:.6; animation:thread 1.1s linear infinite; }
+  @keyframes stitch { 0%,100% { transform:translate(0,0) rotate(-10deg); } 50% { transform:translate(14px,5px) rotate(10deg); } }
+  @keyframes thread { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
+  .spend { margin-left:auto; display:flex; gap:14px; align-items:center; font-size:13px; color:var(--muted);
+           border:1px solid #3a332b; border-radius:8px; padding:6px 12px; cursor:help; }
+  .spend b { color:var(--ink); font-weight:600; }
+  .spend .bal b { color:var(--accent); }
+  .spend .warn b { color:var(--err); }
+  header { position:sticky; top:0; z-index:5; background:var(--bg); }
+  .glass { position:relative; border-radius:6px; overflow:hidden; }
+  .glass img { transition:filter 1.2s ease; }
+  .glass .fog { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+          gap:10px; padding:14px; text-align:center; opacity:0; pointer-events:none; transition:opacity 1.2s ease;
+          background:radial-gradient(ellipse at 30% 20%, #fff6, transparent 60%),
+                     radial-gradient(ellipse at 70% 80%, #fff4, transparent 55%), #d8d2c855; }
+  .glass .fog::before { content:""; position:absolute; inset:-20%; background:
+          radial-gradient(circle at 20% 30%, #ffffff30 0 18%, transparent 30%),
+          radial-gradient(circle at 75% 60%, #ffffff28 0 22%, transparent 34%),
+          radial-gradient(circle at 40% 85%, #ffffff22 0 15%, transparent 28%);
+          animation:mist 7s ease-in-out infinite alternate; }
+  @keyframes mist { from { transform:translate(-6%,-4%) scale(1); } to { transform:translate(6%,4%) scale(1.15); } }
+  .glass.fogged img { filter:blur(9px) brightness(.85) saturate(.5); }
+  .glass.fogged .fog { opacity:1; }
+  .fog .quiptext { position:relative; font-family:Georgia, serif; font-style:italic; font-size:15px; color:#2a2016;
+          text-shadow:0 0 8px #fff, 0 0 2px #fff; transition:opacity .4s; }
+  .fog .quiptext.fade { opacity:0; }
+  .fog .needle { position:relative; transform:scale(1.4); }
+  .fog .needle::after { border-color:#5a4020; }
+  #results h3.day { flex-basis:100%; margin:14px 0 2px; font-family:Georgia, serif; font-weight:normal;
+           color:var(--accent); font-size:17px; border-bottom:1px solid #3a332b; padding-bottom:4px; }
+  #results h3.day:first-child { margin-top:0; }
+  #results h3.day span { font-family:system-ui, sans-serif; font-size:11px; color:var(--muted); margin-left:10px; }
+  a.link { color:var(--accent); text-decoration:underline; cursor:pointer; }
+  #trashSec summary { cursor:pointer; list-style:none; display:flex; align-items:center; gap:8px; }
+  #trashSec summary::before { content:"▸"; color:var(--muted); transition:transform .2s; }
+  #trashBox[open] summary::before { transform:rotate(90deg); }
+  #trashSec summary h2 { margin:0; }
+  #trash { margin-top:10px; }
+  #trash img { opacity:.6; filter:grayscale(.5); cursor:zoom-in; }
+  #trash figcaption { font-size:12px; color:var(--ink); }
+  .take { margin-left:6px; font-size:11px; color:#1d1a17; background:var(--accent); border-radius:4px; padding:0 5px; }
+  #msg { color:var(--muted); } .err { color:var(--err); font-size:13px; }
+  .empty { color:var(--muted); font-style:italic; }
+
+  /* ----- result cards ----- */
+  .family { display:flex; flex-wrap:wrap; gap:12px; }
+  .family.multi { outline:1px dashed #5a5045; outline-offset:5px; border-radius:8px; }
+  #results figure.card { width:220px; }
+  #results .card .glass { min-height:160px; background:#000; }
+  #results .card img { width:220px; height:auto; max-height:330px; object-fit:contain; cursor:zoom-in; }
+  #results figcaption { font-size:13px; color:var(--ink); }
+  .card .hist { position:absolute; top:8px; right:8px; font-size:11px; background:#000b; color:#fff;
+          padding:2px 8px; border-radius:10px; pointer-events:none; }
+  .card .tools { position:absolute; left:0; right:0; bottom:0; display:flex; gap:6px; justify-content:flex-end;
+          padding:24px 8px 8px; background:linear-gradient(transparent, #000c); opacity:0; transition:opacity .15s; }
+  .card:hover .tools, .card:focus-within .tools, .card.menuopen .tools { opacity:1; }
+  .card.busy .tools, .card.busy .menu { display:none; }
+  .tools button { width:34px; height:34px; border-radius:50%; border:0; padding:0; font-size:16px; font-weight:normal;
+          background:#1d1a17e0; color:var(--ink); }
+  .tools button:hover { background:var(--accent); color:#1d1a17; }
+  .card .menu { position:absolute; right:8px; bottom:50px; z-index:2; display:none; min-width:160px; padding:4px;
+          background:var(--panel); border:1px solid #5a5045; border-radius:8px; box-shadow:0 6px 20px #000a; }
+  .card.menuopen .menu { display:block; }
+  .menu button { display:flex; justify-content:space-between; gap:12px; width:100%; background:none; color:var(--ink);
+          font-size:13px; font-weight:normal; padding:7px 10px; border-radius:5px; }
+  .menu button:hover { background:#3a332b; }
+  .menu button.danger:hover { color:var(--err); }
+  .menu small { color:var(--muted); }
+  .unnamed { color:var(--muted); font-style:italic; font-weight:normal; cursor:pointer;
+          border-bottom:1px dashed var(--muted); }
+  .unnamed:hover { color:var(--accent); border-color:var(--accent); }
+  #results figure.flash .glass { animation:flash 1.6s ease-out 2; }
+  @keyframes flash { 0%,100% { box-shadow:0 0 0 0 transparent; } 30% { box-shadow:0 0 0 4px var(--accent); } }
+
+  /* ----- viewer ----- */
+  #viewer { position:fixed; inset:0; z-index:10; background:#0d0b09f5; display:grid; grid-template-columns:minmax(0,1fr) 340px; }
+  #viewer[hidden] { display:none; }
+  #viewer.simple { grid-template-columns:minmax(0,1fr); }
+  #viewer.simple .vside, #viewer.simple .vmodes { display:none; }
+  .vstage { position:relative; display:flex; flex-direction:column; min-width:0; min-height:0; padding:12px 64px 20px; }
+  .vtop { display:flex; align-items:center; gap:14px; min-height:40px; padding-right:40px; }
+  .vtop #vCaption { color:var(--ink); font-family:Georgia, serif; font-size:17px; }
+  .vtop #vCount { margin-left:auto; color:var(--muted); font-size:13px; }
+  .vmodes { display:flex; border:1px solid #5a5045; border-radius:8px; overflow:hidden; }
+  .vmodes button { background:none; color:var(--muted); border-radius:0; font-size:13px; font-weight:normal; padding:6px 12px; }
+  .vmodes button + button { border-left:1px solid #5a5045; }
+  .vmodes button.on { background:var(--accent); color:#1d1a17; }
+  .vmodes button:not(.on):not(:disabled):hover { color:var(--ink); }
+  #vCanvas { flex:1; min-height:0; position:relative; border-radius:8px; }
+  #vCanvas .vimg { position:absolute; inset:0; margin:auto; max-width:100%; max-height:100%; transform-origin:0 0;
+          user-select:none; touch-action:none; }
+  .pair { position:absolute; inset:0; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .pair .cell, .ba { position:relative; }
+  .pair img, .ba img { position:absolute; inset:0; margin:auto; max-width:100%; max-height:100%; user-select:none; }
+  .ba { position:absolute; inset:0; cursor:ew-resize; touch-action:none; }
+  .bahandle { position:absolute; width:2px; margin-left:-1px; background:#fff; box-shadow:0 0 6px #000; pointer-events:none; }
+  .bahandle::after { content:"⇔"; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:30px; height:30px;
+          border-radius:50%; background:#fff; color:#1d1a17; display:flex; align-items:center; justify-content:center; font-size:16px; }
+  .vlabel { position:absolute; top:8px; font-size:12px; background:#000b; color:#fff; padding:3px 9px; border-radius:10px; z-index:1; pointer-events:none; }
+  .vlabel.left { left:8px; } .vlabel.right { right:8px; }
+  .pair .vlabel { left:50%; transform:translateX(-50%); }
+  .vbanner { position:absolute; left:50%; top:10px; transform:translateX(-50%); z-index:2; display:flex; gap:10px; align-items:center;
+          background:var(--panel); border:1px solid var(--accent); border-radius:20px; padding:5px 6px 5px 14px; font-size:13px; white-space:nowrap; }
+  .vbanner button { font-size:12px; padding:4px 12px; border-radius:14px; }
+  .vbanner button.ghost { padding:3px 11px; font-size:12px; }
+  .vnav { position:absolute; top:50%; transform:translateY(-50%); width:44px; height:64px; padding:0; border-radius:8px;
+          background:#ffffff14; color:var(--ink); font-size:30px; font-weight:normal; z-index:3; }
+  .vnav:hover:not(:disabled) { background:var(--accent); color:#1d1a17; }
+  .vnav:disabled { opacity:.15; }
+  .vnav.prev { left:10px; } .vnav.next { right:10px; }
+  .vclose { position:absolute; top:12px; right:12px; width:36px; height:36px; padding:0; border-radius:50%; z-index:3;
+          background:#ffffff14; color:var(--ink); font-size:18px; font-weight:normal; }
+  .vclose:hover { background:var(--accent); color:#1d1a17; }
+  .vhint { text-align:center; color:var(--muted); font-size:12px; margin-top:8px; }
+  .vside { background:var(--panel); overflow-y:auto; padding:18px 18px 28px; border-left:1px solid #3a332b; }
+  .vside h3 { margin:0; font-family:Georgia, serif; font-weight:normal; color:var(--ink); font-size:20px; }
+  .vside h3 b { font-weight:normal; color:var(--accent); }
+  .vsec { margin-top:18px; }
+  .vsec h4 { margin:0 0 8px; font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); font-weight:600; }
+  .thumbs { display:flex; flex-wrap:wrap; gap:8px; }
+  .thumb { width:66px; cursor:pointer; text-align:center; }
+  .thumb img { width:66px; height:88px; object-fit:cover; border-radius:5px; display:block; background:#000;
+          outline:2px solid transparent; outline-offset:1px; }
+  .thumb:hover img { outline-color:#5a5045; }
+  .thumb.on img { outline-color:var(--accent); }
+  .thumb span { display:block; font-size:11px; color:var(--muted); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .thumb.on span { color:var(--accent); }
+  .vside textarea { width:100%; min-height:80px; resize:vertical; background:var(--bg); color:var(--ink);
+          border:1px solid #5a5045; border-radius:6px; padding:8px; font:inherit; font-size:14px; }
+  .vside textarea:focus { outline:none; border-color:var(--accent); }
+  .vside .check { display:flex; gap:8px; align-items:flex-start; font-size:13px; margin:6px 0; }
+  .vside .hint { font-size:12px; color:var(--muted); }
+  #vFixGo { width:100%; font-size:15px; padding:9px; margin-top:8px; }
+  .vactions { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+  .vactions button { display:flex; justify-content:space-between; align-items:center; background:none; color:var(--ink);
+          border:1px solid #5a5045; font-size:13px; font-weight:normal; padding:7px 10px; border-radius:6px; }
+  .vactions button:hover:not(:disabled) { border-color:var(--accent); }
+  .vactions button.danger:hover:not(:disabled) { border-color:var(--err); color:var(--err); }
+  kbd { font:11px ui-monospace, monospace; color:var(--muted); border:1px solid #5a5045; border-radius:3px; padding:0 4px; }
+  .vactions small, #vFixGo small { font-weight:normal; opacity:.75; }
+  #viewer.busy #vFixGo, #viewer.busy .vactions button { opacity:.4; pointer-events:none; }
+  #vMsg { margin-top:14px; font-size:13px; color:var(--muted); min-height:18px; }
+  @media (max-width:820px) {
+    #viewer { grid-template-columns:minmax(0,1fr); grid-template-rows:70vh auto; overflow-y:auto; }
+    .vstage { padding:8px 16px 12px; } .vnav { width:34px; } .vmodes button { padding:6px 8px; font-size:12px; }
+    .vside { border-left:0; border-top:1px solid #3a332b; overflow:visible; }
+  }
+
+  dialog { background:var(--panel); color:var(--ink); border:1px solid #5a5045; border-radius:12px; padding:20px; width:min(440px, 92vw); }
+  dialog::backdrop { background:#000a; }
+  dialog h3 { margin:0 0 12px; font-family:Georgia, serif; font-weight:normal; color:var(--accent); }
+  dialog label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  dialog input[type=text], dialog textarea { width:100%; background:var(--bg); color:var(--ink); border:1px solid #5a5045;
+           border-radius:6px; padding:8px; font:inherit; }
+  dialog textarea { min-height:90px; resize:vertical; }
+  dialog .row { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+  dialog .row button { font-size:15px; padding:8px 18px; }
+  dialog .hint { font-size:12px; color:var(--muted); margin-top:4px; }
+  dialog .preview { width:80px; height:80px; object-fit:cover; border-radius:6px; float:right; margin-left:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dressmaker Try-On</h1>
+  <button id="render">Try On</button>
+  <button class="ghost" id="refresh">Refresh</button>
+  <div id="spend" class="spend" title=""></div>
+  <div>
+    <div id="quip"><span class="needle"></span><span class="text"></span></div>
+    <div id="count"></div>
+    <div class="bar"><div id="fill"></div></div>
+    <div id="msg"></div>
+  </div>
+</header>
+<main>
+  {% if not has_key %}<div class="err">XAI_API_KEY is not set. Add a line <code>XAI_API_KEY=xai-...</code> to ~/dressmaker/.env and restart.</div>{% endif %}
+  <section>
+    <div class="head"><h2>Dresses</h2><span class="sel" id="dresses-sel"></span>
+      <button class="ghost" data-all="dresses">All</button><button class="ghost" data-none="dresses">None</button></div>
+    <div class="path">{{ dress_dir }} · click to select · ✎ to name it and add notes</div><div class="grid pick" id="dresses"></div>
+  </section>
+  <section>
+    <div class="head"><h2>People</h2><span class="sel" id="people-sel"></span>
+      <button class="ghost" data-all="people">All</button><button class="ghost" data-none="people">None</button></div>
+    <div class="path">{{ people_dir }} · click to select · ✎ to name them and add notes</div><div class="grid pick" id="people"></div>
+  </section>
+  <section><h2>Results</h2><div class="path" id="folder"></div><div class="grid" id="results"></div><div id="errors"></div></section>
+  <section id="trashSec" hidden>
+    <details id="trashBox">
+      <summary><h2 id="trashTitle">Recently deleted</h2></summary>
+      <div class="path">Kept in each day's <code>_deleted/</code> folder. Restore puts a result back with its undo history.</div>
+      <div class="grid" id="trash"></div>
+    </details>
+  </section>
+</main>
+
+<div id="viewer" hidden>
+  <div class="vstage">
+    <div class="vtop">
+      <span id="vCaption"></span>
+      <div class="vmodes" id="vModes">
+        <button data-mode="single" title="Just this image (C cycles views)">Image</button>
+        <button data-mode="compare" title="Next to the original dress (C cycles views)">With dress</button>
+        <button data-mode="ba" title="Drag to compare with an earlier version (C cycles views)">Before / after</button>
+      </div>
+      <span id="vCount"></span>
+    </div>
+    <div id="vCanvas" class="glass"><div class="fog"><span class="needle"></span><span class="quiptext"></span></div></div>
+    <div class="vhint" id="vHint"></div>
+    <button class="vnav prev" id="vPrev" title="Previous (←)">‹</button>
+    <button class="vnav next" id="vNext" title="Next (→)">›</button>
+    <button class="vclose" id="vClose" title="Close (Esc)">✕</button>
+  </div>
+  <aside class="vside">
+    <div id="vHead"></div>
+    <div class="vsec"><h4>Made from</h4><div class="thumbs" id="vSources"></div></div>
+    <div class="vsec" id="vVerSec"><h4>Versions</h4><div class="thumbs" id="vVersions"></div>
+      <div class="hint" style="margin-top:6px">Click one to look at it. "Use this version" brings it back, and nothing is thrown away.</div></div>
+    <div class="vsec" id="vTakesSec"><h4>Other takes</h4><div class="thumbs" id="vTakes"></div></div>
+    <div class="vsec" id="vFixSec"><h4>Fix the dress <kbd>F</kbd></h4>
+      <textarea id="vFixNote" placeholder="e.g. The dress is strapless, remove the straps. Make it navy blue, not charcoal."></textarea>
+      <label class="check"><input type="checkbox" id="vFixRemember" checked>
+        <span>Remember this for the dress (used in future try-ons)</span></label>
+      <div class="hint">Only the dress changes, plus hair or nail color if you ask. "Remove the arms" means the sleeves. Ctrl+Enter sends.</div>
+      <button id="vFixGo">✂ Fix it <small>~${{ price }}</small></button>
+    </div>
+    <div class="vsec" id="vActSec"><h4>More</h4>
+      <div class="vactions">
+        <button data-act="redo" title="Run this try-on again from scratch, replacing this image (the current one is kept as a version)">↻ Redo <kbd>R</kbd></button>
+        <button data-act="newtake" title="Render a fresh try-on as a separate take (~${{ price }})">＋ New take <kbd>N</kbd></button>
+        <button data-act="duplicate" title="Copy this (with its history) to change separately. Free.">⧉ Duplicate <kbd>D</kbd></button>
+        <button data-act="undo" title="Go back to the version before the last change">⟲ Undo <kbd>U</kbd></button>
+        <button data-act="delete" class="danger" title="Move to Recently deleted (you can restore it)">🗑 Delete <kbd>Del</kbd></button>
+      </div>
+    </div>
+    <div id="vMsg"></div>
+  </aside>
+</div>
+
+<dialog id="metaDlg">
+  <form method="dialog">
+    <img class="preview" alt="">
+    <h3 id="metaTitle"></h3>
+    <div class="hint" id="metaFile"></div>
+    <label for="metaAlias">Name</label>
+    <input type="text" id="metaAlias" placeholder="e.g. Midnight">
+    <label for="metaNotes">Notes (added to every try-on)</label>
+    <textarea id="metaNotes"></textarea>
+    <div class="hint" id="metaHint"></div>
+    <div class="row"><button type="button" class="ghost" onclick="this.closest('dialog').close('cancel')">Cancel</button><button id="metaSave" value="save">Save</button></div>
+  </form>
+</dialog>
+
+<script>
+const PRICE = {{ price }};
+const $ = id => document.getElementById(id);
+let folder = "", polling = null, lib = { dresses: {}, people: {} }, results = [];
+const avail = { dresses: [], people: [] };
+const sel = { dresses: new Set(), people: new Set() };
+try { const s = JSON.parse(localStorage.getItem("selection") || "{}");
+      for (const k in sel) sel[k] = new Set(s[k] || []); } catch {}
+
+function saveSel() {
+  try { localStorage.setItem("selection", JSON.stringify({ dresses: [...sel.dresses], people: [...sel.people] })); } catch {}
+}
+const imgUrl = (kind, n) => (kind === "dresses" ? "/img/dress/" : "/img/person/") + encodeURIComponent(n);
+const alias = (kind, n) => (lib[kind][n] || {}).alias || "";
+const label = (kind, n) => alias(kind, n) || (n || "?").replace(/\.[^.]+$/, "");
+const outUrl = (fold, src) => `/output/${fold}/${src.split("/").map(encodeURIComponent).join("/")}`;
+const resultSrc = r => `${outUrl(r.folder, r.file)}?v=${r.version}`;
+const tgt = r => ({ folder: r.folder, result: r.file });
+const pairName = r => `${label("dresses", r.dress)} on ${label("people", r.person)}` + (r.take > 1 ? ` v${r.take}` : "");
+const fmtDay = iso => { const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" }); };
+const fmtTime = iso => new Date(iso).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+async function api(url, body) {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  let j = {};
+  try { j = await r.json(); } catch {}
+  return { ok: r.ok, j };
+}
+
+// Status line, shown in the header and in the viewer's side panel. link = [text, onclick].
+function say(text, link) {
+  for (const box of [$("msg"), $("vMsg")]) {
+    box.textContent = text || "";
+    if (link) { const a = el("a", "link", link[0]); a.onclick = link[1]; box.append(a); }
+  }
+}
+
+// A name in a caption; unnamed dresses/people get a click-to-name link.
+function nameEl(kind, n) {
+  if (!n) return el("b", "", "?");
+  if (alias(kind, n)) return el("b", "", alias(kind, n));
+  const u = el("b", "unnamed", kind === "dresses" ? "Unnamed dress" : "Unnamed person");
+  u.title = `${n}\nClick to give it a name`;
+  u.onclick = e => { e.stopPropagation(); openMeta(kind, n); };
+  return u;
+}
+
+function pickTiles(kind) {
+  const box = $(kind), names = avail[kind];
+  box.innerHTML = names.length ? "" : '<div class="empty">Nothing here yet</div>';
+  names.forEach((n, i) => {
+    const f = el("figure"), img = el("img"), cap = el("figcaption"), names_ = el("div", "names");
+    img.loading = "lazy"; img.alt = ""; img.src = imgUrl(kind, n);
+    const a = alias(kind, n), notes = (lib[kind][n] || {}).notes;
+    if (a) names_.append(el("div", "alias", a));
+    names_.append(el("div", "", n));
+    f.title = n + (notes ? "\nNotes: " + notes : "");
+    const edit = el("button", "icon", "✎"); edit.title = "Name & notes";
+    edit.onclick = e => { e.stopPropagation(); openMeta(kind, n); };
+    cap.append(names_, edit);
+    const z = el("button", "zoombtn", "🔍"); z.title = "View larger";
+    z.onclick = e => { e.stopPropagation();
+      openSimple(names.map(m => ({ src: imgUrl(kind, m), label: label(kind, m) })), i); };
+    f.append(z, img, cap);
+    f.classList.toggle("on", sel[kind].has(n));
+    f.onclick = () => { sel[kind].has(n) ? sel[kind].delete(n) : sel[kind].add(n);
+                        f.classList.toggle("on"); saveSel(); updateCount(); };
+    box.appendChild(f);
+  });
+}
+
+// ----- result cards -----
+function resultTiles(list) {
+  const box = $("results");
+  box.innerHTML = list.length ? "" : '<div class="empty">Nothing here yet</div>';
+  let day = null, group = null, fam = null;
+  for (const r of list) {
+    if (r.date !== day) {
+      day = r.date; group = null;
+      const h = el("h3", "day", fmtDay(day));
+      h.append(el("span", "", r.folder));
+      box.appendChild(h);
+    }
+    if (r.group !== group) { group = r.group; fam = el("div", "family"); box.append(fam); }
+    fam.append(card(r));
+  }
+  box.querySelectorAll(".family").forEach(f => {
+    f.classList.toggle("multi", f.children.length > 1);
+    if (f.children.length > 1) f.title = "Takes of the same dress on the same person";
+  });
+  applyFog();
+  if (flashFile && !V.open) {
+    const f = box.querySelector(`figure[data-file="${CSS.escape(flashFile)}"]`);
+    if (f) { f.scrollIntoView({ behavior: "smooth", block: "center" }); f.classList.add("flash"); flashFile = null; }
+  }
+}
+let flashFile = null;
+
+function card(r) {
+  const f = el("figure", "card"), glass = el("div", "glass"), img = el("img"), fog = el("div", "fog"), cap = el("figcaption");
+  f.dataset.file = r.key;
+  img.alt = ""; img.src = resultSrc(r);
+  img.title = "Open (compare, versions, fix)";
+  img.onclick = () => openResult(r.key);
+  fog.append(el("span", "needle"), el("span", "quiptext", currentQuip || "Unpicking that seam…"));
+  glass.append(img, fog);
+  if (r.undos) glass.append(el("span", "hist", `${r.undos + 1} versions`));
+  if (r.dress && r.person) {
+    const tools = el("div", "tools"), menu = el("div", "menu");
+    const tool = (text, title, fn) => { const b = el("button", "", text); b.title = title;
+      b.onclick = e => { e.stopPropagation(); fn(); }; tools.append(b); return b; };
+    tool("✂", "Fix… tell Grok what's wrong with the dress", () => openResult(r.key, true));
+    tool("＋", `New take: a fresh render as a separate version (~$${PRICE})`, () => actNewTake(r));
+    tool("⋯", "More", () => {
+      const open = !f.classList.contains("menuopen");
+      document.querySelectorAll(".card.menuopen").forEach(c => c.classList.remove("menuopen"));
+      f.classList.toggle("menuopen", open);
+    });
+    const item = (text, note, fn, cls) => { const b = el("button", cls || ""); b.append(text, el("small", "", note));
+      b.onclick = e => { e.stopPropagation(); f.classList.remove("menuopen"); fn(); }; menu.append(b); };
+    item("↻ Redo", `~$${PRICE}`, () => actRedo(r));
+    item("⧉ Duplicate", "free", () => actDuplicate(r));
+    if (r.undos) item("⟲ Undo", `${r.undos} back`, () => actUndo(r));
+    item("🗑 Delete", "", () => actDelete(r), "danger");
+    glass.append(tools, menu);
+  }
+  const names_ = el("div", "names"), line = el("div");
+  line.append(nameEl("dresses", r.dress), " on ", nameEl("people", r.person));
+  if (r.take > 1) line.append(el("span", "take", `v${r.take}`));
+  names_.append(line);
+  cap.append(names_);
+  f.append(glass, cap);
+  return f;
+}
+document.addEventListener("click", () =>
+  document.querySelectorAll(".card.menuopen").forEach(c => c.classList.remove("menuopen")));
+
+// Fog the glass on results that are being fixed/redone.
+let busyFiles = new Set(), currentQuip = "";
+function applyFog() {
+  document.querySelectorAll("#results figure[data-file]").forEach(f => {
+    const busy = busyFiles.has(f.dataset.file);
+    f.classList.toggle("busy", busy);
+    f.querySelector(".glass").classList.toggle("fogged", busy);
+  });
+  if (V.open && !V.simple) {
+    const busy = busyFiles.has(V.key);
+    $("vCanvas").classList.toggle("fogged", busy);
+    $("viewer").classList.toggle("busy", busy);
+  }
+}
+
+// ----- actions (shared by cards and the viewer) -----
+const isBusy = r => busyFiles.has(r.key);
+function actRedo(r) { if (!isBusy(r)) post("/api/redo", tgt(r)); }
+async function actNewTake(r) {
+  const j = await post("/api/newtake", tgt(r));
+  if (j && j.key) { flashFile = j.key; busyFiles.add(j.key); load(); }
+}
+async function actDuplicate(r) {
+  const { ok, j } = await api("/api/duplicate", tgt(r));
+  say(ok ? `Copied ${pairName(r)} to a new version` : j.error);
+  if (!ok) return;
+  flashFile = j.key;
+  if (V.open && !V.simple) setKey(j.key);
+  load();
+}
+async function actUndo(r) {
+  if (!r.undos || isBusy(r)) return;
+  const { ok, j } = await api("/api/undo", tgt(r));
+  say(ok ? `Undid ${pairName(r)}` : j.error);
+  load();
+}
+async function actDelete(r) {
+  if (isBusy(r)) return;
+  const { ok, j } = await api("/api/delete", tgt(r));
+  if (!ok) { say(j.error); return; }
+  say(`Deleted ${pairName(r)}. `, ["Undo", () => restore(j.id)]);
+  load();
+}
+function actFix(r) {
+  const note = $("vFixNote").value.trim();
+  if (!note) { say("Describe what's wrong with the dress first."); $("vFixNote").focus(); return; }
+  if (isBusy(r)) return;
+  post("/api/fix", { ...tgt(r), note, remember: $("vFixRemember").checked });
+  $("vFixNote").value = ""; $("vFixNote").blur();
+}
+async function actUseVersion(r, v) {
+  const { ok, j } = await api("/api/use_version", { ...tgt(r), version: v.name });
+  say(ok ? `Brought back the version from ${fmtTime(v.made)}. Undo goes back again.` : j.error);
+  V.verSel = 0;
+  load();
+}
+
+function updateCount() {
+  const d = avail.dresses.filter(n => sel.dresses.has(n)).length;
+  const p = avail.people.filter(n => sel.people.has(n)).length;
+  $("dresses-sel").textContent = `${d} of ${avail.dresses.length} selected`;
+  $("people-sel").textContent = `${p} of ${avail.people.length} selected`;
+  $("count").textContent = `${d} dresses × ${p} people = ${d * p} try-ons (~$${(d * p * PRICE).toFixed(2)}, already-done ones are skipped)`;
+  if (!polling) $("render").disabled = !(d && p);
+}
+
+async function load() {
+  const s = await (await fetch("/api/state")).json();
+  folder = s.folder; lib = s.library; results = s.results;
+  avail.dresses = s.dresses; avail.people = s.people;
+  pickTiles("dresses"); pickTiles("people"); resultTiles(results); loadTrash();
+  $("folder").textContent = "~/dressmaker/Render… (all days, newest first) · click an image to open it";
+  updateCount();
+  refreshViewer();
+}
+
+document.querySelectorAll("[data-all]").forEach(b => b.onclick = () => {
+  const k = b.dataset.all; avail[k].forEach(n => sel[k].add(n)); saveSel(); load(); });
+document.querySelectorAll("[data-none]").forEach(b => b.onclick = () => {
+  sel[b.dataset.none].clear(); saveSel(); load(); });
+
+// ----- name & notes dialog -----
+let metaTarget = null;
+function openMeta(kind, n) {
+  metaTarget = { kind, n };
+  const m = lib[kind][n] || {};
+  $("metaTitle").textContent = kind === "dresses" ? "Dress" : "Person";
+  $("metaFile").textContent = n;
+  $("metaAlias").value = m.alias || "";
+  $("metaNotes").value = m.notes || "";
+  $("metaNotes").placeholder = kind === "dresses" ? "e.g. strapless, navy blue, ankle length" : "e.g. keep her glasses";
+  $("metaHint").textContent = kind === "dresses"
+    ? "Notes describe what Grok tends to get wrong. They go into every try-on of this dress."
+    : "Notes go into every try-on for this person.";
+  $("metaDlg").querySelector(".preview").src = imgUrl(kind, n);
+  $("metaDlg").returnValue = ""; $("metaDlg").showModal();
+  $("metaAlias").focus();
+}
+$("metaDlg").addEventListener("close", async () => {
+  if ($("metaDlg").returnValue !== "save" || !metaTarget) return;
+  await fetch("/api/meta", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: metaTarget.kind, name: metaTarget.n,
+                           alias: $("metaAlias").value, notes: $("metaNotes").value }) });
+  load();
+});
+
+// ----- viewer -----
+// Results mode: big image + side panel with sources, versions, takes, fix and actions.
+// Simple mode (dresses, people, trash): just the image with arrow navigation.
+const V = { open: false, simple: false, list: [], i: 0, key: null, lastIdx: 0, mode: "single",
+            versions: [], verSel: 0, verFor: null, preview: null, z: { s: 1, x: 0, y: 0 }, ba: 50 };
+const curResult = () => results.find(r => r.key === V.key);
+
+function setKey(key) {
+  V.key = key; V.verSel = 0; V.preview = null; V.versions = []; V.verFor = null;
+  if (V.mode === "ba") V.mode = "single";
+  $("vFixNote").value = "";
+  resetZoom();
+}
+function showViewer(simple) {
+  V.open = true; V.simple = simple;
+  $("viewer").hidden = false; $("viewer").classList.toggle("simple", simple);
+  document.body.style.overflow = "hidden";
+}
+function openResult(key, focusFix) {
+  V.mode = "single"; setKey(key); say("");
+  showViewer(false); renderViewer();
+  if (focusFix) $("vFixNote").focus();
+}
+function openSimple(list, i) {
+  V.list = list; V.i = i; V.mode = "single"; resetZoom();
+  showViewer(true); renderViewer();
+}
+function closeViewer() {
+  V.open = false; $("viewer").hidden = true;
+  $("viewer").classList.remove("busy"); $("vCanvas").classList.remove("fogged");
+  document.body.style.overflow = "";
+  if (!V.simple) {
+    const f = $("results").querySelector(`figure[data-file="${CSS.escape(V.key || "")}"]`);
+    if (f) f.scrollIntoView({ block: "nearest" });
+  }
+}
+function step(d) {
+  if (V.simple) {
+    const i = V.i + d;
+    if (i < 0 || i >= V.list.length) return;
+    V.i = i; resetZoom();
+  } else {
+    const n = results[results.findIndex(r => r.key === V.key) + d];
+    if (!n) return;
+    setKey(n.key);
+  }
+  renderViewer();
+}
+function refreshViewer() {
+  if (!V.open || V.simple) return;
+  if (!results.length) return closeViewer();
+  if (!curResult()) setKey(results[Math.min(V.lastIdx, results.length - 1)].key);
+  renderViewer();
+}
+
+async function loadVersions(r, vk) {
+  let list = [];
+  try { list = (await (await fetch(`/api/versions?folder=${encodeURIComponent(r.folder)}&result=${encodeURIComponent(r.file)}`)).json()).versions || []; }
+  catch {}
+  if (V.verFor !== vk) return;
+  V.versions = list.map(v => ({ ...v, url: v.current ? resultSrc(r) : outUrl(r.folder, v.src) }));
+  if (V.verSel >= V.versions.length) V.verSel = 0;
+  renderViewer();
+}
+
+function renderViewer() {
+  if (!V.open) return;
+  if (V.simple) {
+    const it = V.list[V.i];
+    $("vCaption").textContent = it.label || "";
+    $("vCount").textContent = `${V.i + 1} / ${V.list.length}`;
+    $("vPrev").disabled = V.i === 0; $("vNext").disabled = V.i === V.list.length - 1;
+    $("vHint").textContent = "Click or scroll to zoom · drag to pan · ← → to browse · Esc to close";
+    clearStage(); single(it.src);
+    return;
+  }
+  const r = curResult();
+  if (!r) return closeViewer();
+  const idx = results.indexOf(r);
+  V.lastIdx = idx;
+  const vk = `${r.key}@${r.version}@${r.undos}`;
+  if (V.verFor !== vk) {
+    if (V.verFor && V.verFor.startsWith(r.key + "@")) V.verSel = 0;  // same image, new content
+    V.verFor = vk; loadVersions(r, vk);
+  }
+  $("vCaption").textContent = "";
+  $("vCount").textContent = `${idx + 1} / ${results.length}`;
+  $("vPrev").disabled = idx === 0; $("vNext").disabled = idx === results.length - 1;
+  renderStage(r); renderSide(r); applyFog();
+}
+
+function clearStage() { $("vCanvas").querySelectorAll(":scope > :not(.fog)").forEach(e => e.remove()); }
+
+function renderStage(r) {
+  const canCompare = !!r.dress, canBA = V.versions.length > 1;
+  if ((V.mode === "compare" && !canCompare) || (V.mode === "ba" && !canBA)) V.mode = "single";
+  document.querySelectorAll("#vModes button").forEach(b => {
+    b.classList.toggle("on", b.dataset.mode === V.mode && !V.preview);
+    b.disabled = (b.dataset.mode === "compare" && !canCompare) || (b.dataset.mode === "ba" && !canBA);
+  });
+  clearStage();
+  const cur = resultSrc(r);
+  let hint = "Click or scroll to zoom · drag to pan · ← → to browse · Esc to close";
+  if (V.preview) {
+    single(V.preview.src, banner(V.preview.label, [["Back to the try-on", () => { V.preview = null; renderViewer(); }, "ghost"]]));
+  } else if (V.mode === "compare") {
+    pair(cur, "Try-on", imgUrl("dresses", r.dress), "Original dress");
+    hint = "Side by side with the dress it was made from · C to switch views";
+  } else if (V.mode === "ba") {
+    const before = V.versions[V.verSel || 1];
+    beforeAfter(before.url, `Earlier · ${fmtTime(before.made)}`, cur, "Now");
+    hint = "Drag across the image to compare · pick a different “before” under Versions";
+  } else if (V.verSel > 0 && V.versions[V.verSel]) {
+    const v = V.versions[V.verSel];
+    single(v.url, banner(`Earlier version · ${fmtTime(v.made)}`, [
+      ["Use this version", () => actUseVersion(r, v)],
+      ["Back to now", () => { V.verSel = 0; renderViewer(); }, "ghost"]]));
+  } else {
+    single(cur);
+  }
+  $("vHint").textContent = hint;
+}
+
+function banner(text, buttons) {
+  const b = el("div", "vbanner", text);
+  for (const [t, fn, cls] of buttons) { const x = el("button", cls || "", t); x.onclick = fn; b.append(x); }
+  return b;
+}
+function single(src, bannerEl) {
+  const img = el("img", "vimg"); img.src = src; img.alt = ""; img.draggable = false;
+  applyZ(img);
+  $("vCanvas").append(img);
+  if (bannerEl) $("vCanvas").append(bannerEl);
+}
+function pair(a, al, b, bl) {
+  const w = el("div", "pair");
+  for (const [s, l] of [[a, al], [b, bl]]) {
+    const c = el("div", "cell"), i = el("img"); i.src = s; i.alt = ""; i.draggable = false;
+    c.append(i, el("span", "vlabel left", l)); w.append(c);
+  }
+  $("vCanvas").append(w);
+}
+function beforeAfter(beforeSrc, beforeLbl, afterSrc, afterLbl) {
+  const w = el("div", "ba"), b = el("img"), a = el("img"), handle = el("div", "bahandle");
+  const bl = el("span", "vlabel left", beforeLbl), al = el("span", "vlabel right", afterLbl);
+  b.src = beforeSrc; a.src = afterSrc; b.alt = a.alt = ""; b.draggable = a.draggable = false;
+  w.append(b, a, handle, bl, al);
+  $("vCanvas").append(w);
+  const place = () => {
+    const r = a.getBoundingClientRect(), o = w.getBoundingClientRect();
+    a.style.clipPath = `inset(0 0 0 ${V.ba}%)`;
+    Object.assign(handle.style, { left: `${r.left - o.left + r.width * V.ba / 100}px`,
+                                  top: `${r.top - o.top}px`, height: `${r.height}px` });
+    for (const l of [bl, al]) l.style.top = `${r.top - o.top + 8}px`;
+    bl.style.left = `${r.left - o.left + 8}px`; al.style.right = `${o.right - r.right + 8}px`;
+  };
+  const move = e => { const r = a.getBoundingClientRect();
+    V.ba = Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100)); place(); };
+  a.onload = place; place();
+  w.onpointerdown = e => { w.setPointerCapture(e.pointerId); move(e); w.onpointermove = move; };
+  w.onpointerup = w.onpointercancel = () => { w.onpointermove = null; };
+}
+
+// Zoom & pan for the single image: click toggles 1× / full size, wheel zooms at the cursor, drag pans.
+function resetZoom() { V.z = { s: 1, x: 0, y: 0 }; }
+function applyZ(img) {
+  img.style.transform = `translate(${V.z.x}px, ${V.z.y}px) scale(${V.z.s})`;
+  img.style.cursor = V.z.s > 1 ? "grab" : "zoom-in";
+}
+function zoomAt(img, cx, cy, s) {
+  s = Math.min(8, Math.max(1, s));
+  const r = img.getBoundingClientRect(), lx = (cx - r.left) / V.z.s, ly = (cy - r.top) / V.z.s;
+  V.z.x += lx * (V.z.s - s); V.z.y += ly * (V.z.s - s); V.z.s = s;
+  if (s === 1) V.z.x = V.z.y = 0;
+  applyZ(img);
+}
+{
+  const cv = $("vCanvas");
+  let drag = null;
+  cv.addEventListener("wheel", e => {
+    const img = cv.querySelector(".vimg");
+    if (!img) return;
+    e.preventDefault();
+    zoomAt(img, e.clientX, e.clientY, V.z.s * (e.deltaY < 0 ? 1.2 : 1 / 1.2));
+  }, { passive: false });
+  cv.addEventListener("pointerdown", e => {
+    const img = e.target.closest(".vimg");
+    if (!img || e.button !== 0) return;
+    drag = { x: e.clientX, y: e.clientY, ox: V.z.x, oy: V.z.y, moved: false, img };
+    img.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true;
+    if (drag.moved && V.z.s > 1) { V.z.x = drag.ox + dx; V.z.y = drag.oy + dy; drag.img.style.cursor = "grabbing";
+      drag.img.style.transform = `translate(${V.z.x}px, ${V.z.y}px) scale(${V.z.s})`; }
+  });
+  cv.addEventListener("pointerup", e => {
+    if (!drag) return;
+    const d = drag; drag = null;
+    if (d.moved) { applyZ(d.img); return; }
+    if (V.z.s > 1) { resetZoom(); applyZ(d.img); }
+    else zoomAt(d.img, e.clientX, e.clientY, Math.max(2.5, d.img.naturalWidth / d.img.getBoundingClientRect().width));
+  });
+  cv.addEventListener("click", e => { if (e.target === cv) closeViewer(); });
+}
+
+function thumb(src, text, on, fn, title) {
+  const t = el("div", "thumb" + (on ? " on" : "")), i = el("img");
+  i.src = src; i.alt = ""; i.loading = "lazy";
+  t.append(i, el("span", "", text));
+  if (title) t.title = title;
+  t.onclick = fn;
+  return t;
+}
+
+function renderSide(r) {
+  const head = $("vHead"); head.innerHTML = "";
+  const h = el("h3");
+  h.append(nameEl("dresses", r.dress), " on ", nameEl("people", r.person));
+  if (r.take > 1) h.append(el("span", "take", `v${r.take}`));
+  head.append(h, el("div", "path", `${fmtDay(r.date)} · ${r.file}`));
+
+  const src = $("vSources"); src.innerHTML = "";
+  if (r.dress) src.append(thumb(imgUrl("dresses", r.dress), "Dress", V.mode === "compare" && !V.preview,
+    () => { V.preview = null; V.mode = V.mode === "compare" ? "single" : "compare"; renderViewer(); },
+    "Show next to the try-on"));
+  if (r.person) src.append(thumb(imgUrl("people", r.person), "Person", !!V.preview,
+    () => { V.preview = V.preview ? null : { src: imgUrl("people", r.person), label: `Original photo of ${label("people", r.person)}` };
+            resetZoom(); renderViewer(); }, "Look at the original photo"));
+
+  const vers = $("vVersions"); vers.innerHTML = "";
+  $("vVerSec").hidden = V.versions.length < 2;
+  V.versions.forEach((v, i) => vers.append(thumb(v.url, i === 0 ? "Now" : fmtTime(v.made),
+    !V.preview && V.mode !== "compare" && (V.mode === "ba" ? i === (V.verSel || 1) : i === V.verSel),
+    () => { V.preview = null;
+      if (V.mode === "compare") V.mode = "single";
+      V.verSel = i; resetZoom(); renderViewer(); },
+    i === 0 ? "The current image" : `Earlier version, made ${v.made.replace("T", " ")}`)));
+
+  const takes = results.filter(x => x.group === r.group && x.key !== r.key);
+  const tk = $("vTakes"); tk.innerHTML = "";
+  $("vTakesSec").hidden = !takes.length;
+  for (const t of takes) tk.append(thumb(resultSrc(t), `v${t.take}` + (t.folder !== r.folder ? ` · ${t.date.slice(5)}` : ""),
+    false, () => { setKey(t.key); renderViewer(); }, pairName(t)));
+
+  const actionable = !!(r.dress && r.person);
+  $("vFixSec").hidden = $("vActSec").hidden = !actionable;
+  const undo = document.querySelector('.vactions [data-act="undo"]');
+  undo.disabled = !r.undos;
+  undo.firstChild.textContent = r.undos > 1 ? `⟲ Undo (${r.undos}) ` : "⟲ Undo ";
+}
+
+const ACTS = { redo: actRedo, newtake: actNewTake, duplicate: actDuplicate, undo: actUndo, delete: actDelete };
+document.querySelectorAll(".vactions [data-act]").forEach(b => b.onclick = () => {
+  const r = curResult(); if (r) ACTS[b.dataset.act](r); });
+document.querySelectorAll("#vModes button").forEach(b => b.onclick = () => {
+  V.mode = b.dataset.mode; V.preview = null; resetZoom(); renderViewer(); });
+$("vFixGo").onclick = () => { const r = curResult(); if (r) actFix(r); };
+$("vPrev").onclick = () => step(-1);
+$("vNext").onclick = () => step(1);
+$("vClose").onclick = closeViewer;
+window.addEventListener("resize", () => { if (V.open && V.mode === "ba") renderViewer(); });
+
+document.addEventListener("keydown", e => {
+  if (!V.open || document.querySelector("dialog[open]")) return;
+  const typing = e.target.matches("textarea, input");
+  if (e.key === "Escape") { e.preventDefault(); typing ? e.target.blur() : closeViewer(); return; }
+  if (typing) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("vFixGo").click(); }
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key === "ArrowLeft") { e.preventDefault(); return step(-1); }
+  if (e.key === "ArrowRight") { e.preventDefault(); return step(1); }
+  const r = !V.simple && curResult();
+  if (!r) return;
+  const k = e.key.toLowerCase();
+  if (k === "c") {
+    const modes = ["single", "compare", "ba"].filter(m => !document.querySelector(`#vModes [data-mode="${m}"]`).disabled);
+    V.mode = modes[(modes.indexOf(V.mode) + 1) % modes.length]; V.preview = null; resetZoom(); renderViewer();
+    return;
+  }
+  if (!(r.dress && r.person)) return;
+  const act = { f: "fix", r: "redo", n: "newtake", d: "duplicate", u: "undo", delete: "delete" }[k];
+  if (!act) return;
+  e.preventDefault();
+  if (act === "fix") $("vFixNote").focus(); else ACTS[act](r);
+});
+
+// ----- jobs -----
+async function post(url, body) {
+  const key = body.result ? `${body.folder}/${body.result}` : null;
+  if (key) { busyFiles.add(key); applyFog(); }
+  const { ok, j } = await api(url, body);
+  if (!ok) { say(j.error); busyFiles.delete(key); applyFog(); return j; }
+  $("render").disabled = true;
+  if (!polling) polling = setInterval(poll, 1000);
+  poll();
+  return j;
+}
+
+// ----- atelier chatter while Grok works -----
+const QUIPS = {
+  tryon: [
+    "Pinning the hem…", "Threading the needle…", "Taking her measurements…",
+    "Pressing the seams flat…", "Basting the bodice…", "Easing in the sleeve cap…",
+    "Matching the pattern at the side seams…", "Draping the bias cut…",
+    "Consulting the toile…", "Letting out the waist a whisper…",
+    "Steaming out the wrinkles…", "Hand-finishing the lace edging…",
+    "Chalking the darts…", "Snipping loose threads…", "Coaxing velvet to behave…",
+    "Asking the mannequin to kindly step aside…", "Arguing with the zipper…",
+    "Measure twice, render once…", "Fluffing the petticoat…",
+    "Checking the drape from across the room…", "Pinning, unpinning, re-pinning…",
+    "Adding a little more swish to the skirt…", "The seamstress is squinting thoughtfully…",
+    "Smoothing the princess seams…", "Making sure it twirls properly…",
+  ],
+  fix: [
+    "Unpicking that seam…", "Back to the cutting table…", "Taking it in just there…",
+    "Reaching for the seam ripper…", "The tailor sighs, then smiles…",
+    "A quick nip and tuck…", "Re-cutting from the original pattern…",
+    "Every great gown needs a second fitting…", "Correcting with a steady hand…",
+    "Haute couture is mostly alterations…", "Re-threading, more carefully this time…",
+  ],
+};
+let quipTimer = null, quipKind = null, quipBag = [];
+function nextQuip() {
+  if (!quipBag.length) quipBag = [...QUIPS[quipKind]].sort(() => Math.random() - .5);
+  const q = quipBag.pop();
+  const texts = [$("quip").querySelector(".text"), ...document.querySelectorAll(".fog .quiptext")];
+  texts.forEach(t => t.classList.add("fade"));
+  setTimeout(() => { currentQuip = q;
+    [$("quip").querySelector(".text"), ...document.querySelectorAll(".fog .quiptext")]
+      .forEach(t => { t.textContent = q; t.classList.remove("fade"); }); }, 400);
+}
+function quips(job) {
+  const kind = !job.running ? null : (job.files || []).length ? "fix" : "tryon";
+  if (kind === quipKind) return;
+  quipKind = kind; quipBag = [];
+  clearInterval(quipTimer); quipTimer = null;
+  $("quip").classList.toggle("on", !!kind);
+  if (kind) { nextQuip(); quipTimer = setInterval(nextQuip, 3500); }
+}
+
+async function poll() {
+  const j = await (await fetch("/status")).json();
+  busyFiles = new Set(j.running ? j.files || [] : []);
+  applyFog();
+  quips(j);
+  $("fill").style.width = j.total ? (100 * j.done / j.total) + "%" : "0";
+  say(j.running ? `Working ${j.done}/${j.total}… ${j.current.join(", ")}`
+                : (j.total ? `Finished ${j.done}/${j.total}` : ""));
+  $("errors").innerHTML = "";
+  for (const e of j.errors) $("errors").appendChild(el("div", "err", e));
+  if (j.errors.length && !j.running) say(`Finished with an error: ${j.errors[j.errors.length - 1]}`);
+  if (j.done !== poll.last) { poll.last = j.done; load(); }
+  if (!j.running && polling) { clearInterval(polling); polling = null; load(); loadSpend(); }
+  if (j.running) $("render").disabled = true; else updateCount();
+}
+
+$("render").onclick = async () => {
+  $("render").disabled = true;
+  const { ok, j } = await api("/render", { dresses: avail.dresses.filter(n => sel.dresses.has(n)),
+                                           people: avail.people.filter(n => sel.people.has(n)) });
+  if (!ok) { say(j.error); updateCount(); return; }
+  say(j.started ? `Started ${j.started} try-ons (${j.skipped} already done)` : `All ${j.skipped} already done. ${j.hint}`);
+  if (j.started) polling = setInterval(poll, 1000); else updateCount();
+};
+$("refresh").onclick = () => { load(); loadSpend(); };
+
+// ----- recently deleted -----
+async function loadTrash() {
+  let items = [];
+  try { items = (await (await fetch("/api/trash")).json()).items; } catch { return; }
+  $("trashSec").hidden = !items.length;
+  $("trashTitle").textContent = `Recently deleted (${items.length})`;
+  const box = $("trash");
+  box.innerHTML = "";
+  const srcs = items.map(t => ({ src: outUrl(t.folder, t.src),
+    label: `Deleted: ${label("dresses", t.dress)} on ${label("people", t.person)}` + (t.take > 1 ? ` v${t.take}` : "") }));
+  items.forEach((t, i) => {
+    const f = el("figure"), img = el("img"), cap = el("figcaption");
+    img.alt = ""; img.loading = "lazy"; img.src = srcs[i].src;
+    img.onclick = () => openSimple(srcs, i);
+    const line = el("div");
+    line.append(el("b", "", label("dresses", t.dress)), " on ", el("b", "", label("people", t.person)));
+    if (t.take > 1) line.append(el("span", "take", `v${t.take}`));
+    cap.append(line);
+    const when = el("div", "path", `from ${t.date} · deleted ${t.deleted_at.replace("T", " ")}`);
+    const act = el("div", "actions"), rb = el("button", "icon", "↩ Restore");
+    rb.onclick = () => restore(t.id);
+    act.append(rb);
+    f.append(img, cap, when, act);
+    box.appendChild(f);
+  });
+}
+async function restore(id) {
+  const { ok, j } = await api("/api/restore", { id });
+  say(ok ? "Restored." : j.error);
+  if (ok) { flashFile = j.key; if (V.open && !V.simple) setKey(j.key); }
+  load();
+}
+
+// ----- spend / balance -----
+const usd = v => "$" + v.toFixed(2);
+async function loadSpend() {
+  let s;
+  try { s = await (await fetch("/api/spend")).json(); } catch { return; }
+  const box = $("spend"), L = s.local, X = s.xai;
+  box.innerHTML = "";
+  const item = (cls, label, val) => { const d = el("span", cls); d.append(label + " ", el("b", "", val)); box.append(d); };
+  item("", "💰 Today", usd(L.today));
+  item("", "Month", usd(L.month));
+  if (X.configured && X.prepaid_usd !== undefined)
+    item(X.prepaid_usd < 1 ? "bal warn" : "bal", "Balance", usd(X.prepaid_usd));
+  let tip = `Spent in this app: ${usd(L.all)} over ${L.calls_all} Grok calls` +
+            (L.since ? ` since ${L.since}` : "") + `. Today: ${L.calls_today} calls.\n` +
+            "Costs are the exact amounts xAI reports for each call.";
+  if (!X.configured)
+    tip += "\n\nTo also show your xAI credit balance, add XAI_MANAGEMENT_KEY and XAI_TEAM_ID to ~/dressmaker/.env and restart.";
+  else if (X.error) tip += "\n\nCouldn't read your xAI balance: " + X.error;
+  else tip += "\n\nBalance is xAI's prepaid credit ledger. xAI posts spending at the end of each billing cycle, so it can read higher than the console mid-cycle.";
+  box.title = tip;
+}
+
+load(); loadSpend(); poll().then(() => { if ($("render").disabled) polling = setInterval(poll, 1000); });
+</script>
+</body>
+</html>
