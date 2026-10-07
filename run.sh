@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Dressmaker Atelier. Copyright (c) 2026 mvg73. MIT License, see LICENSE.
 # Starts Dressmaker Atelier and opens it in your browser (Mac and Linux). Stop it with Ctrl+C.
 set -e
 cd "$(dirname "$0")"

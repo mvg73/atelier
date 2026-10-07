@@ -186,4 +186,15 @@ New pictures go into folders inside `atelier` named by date, like `Render1006202
   - `XAI_IMAGE_MODEL` chooses the image model (the default is `grok-imagine-image-2.0`)
 - Your names, notes, framed looks and settings are saved in `library.json` and `settings.json`. Both stay on your computer.
 
+---
+
+## License
+
+Copyright © 2026 mvg73. Released under the [MIT License](LICENSE).
+
+You're free to use, copy, change and share this app, as long as you keep the copyright
+notice and the license with it. It comes with no warranty.
+
+The room artwork (`static/atelier/room.jpg`) is part of this project and covered by the same license.
+
 Have fun designing! ✨

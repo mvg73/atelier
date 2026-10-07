@@ -1,4 +1,7 @@
-"""Dressmaker try-on: puts every game dress on every friend photo via xAI Grok Imagine."""
+"""Dressmaker Atelier: puts game dresses on photos of people via xAI Grok Imagine.
+
+Copyright (c) 2026 mvg73. MIT License, see LICENSE.
+"""
 import base64
 import io
 import json
