@@ -45,6 +45,8 @@
   button { background:var(--accent); color:#1d1a17; border:0; border-radius:8px; padding:12px 28px;
            font-size:18px; font-weight:600; cursor:pointer; }
   button:disabled { opacity:.5; cursor:default; }
+  a.atelier { color:var(--accent); border:1px solid #5a5045; border-radius:8px; padding:8px 14px; font-size:14px; text-decoration:none; }
+  a.atelier:hover { border-color:var(--accent); box-shadow:0 0 12px #c9a24a66; }
   button.ghost { background:transparent; color:var(--ink); border:1px solid #5a5045; font-size:14px; padding:8px 14px; }
   .bar { height:8px; background:#3a332b; border-radius:4px; overflow:hidden; width:280px; }
   .bar div { height:100%; background:var(--accent); width:0; transition:width .3s; }
@@ -223,6 +225,7 @@
   <h1>Dressmaker Try-On</h1>
   <button id="render">Try On</button>
   <button class="ghost" id="refresh">Refresh</button>
+  <a class="ghost atelier" href="/atelier" title="Try the illustrated workroom prototype">Atelier ↗</a>
   <div id="spend" class="spend" title=""></div>
   <div>
     <div id="quip"><span class="needle"></span><span class="text"></span></div>

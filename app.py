@@ -53,6 +53,19 @@ FIX_PROMPT = (
     " Hair style, makeup and jewelry stay the same unless the correction is about hair color or "
     "nail color. The dress should match image 2."
 )
+REQUEST_PROMPT = (
+    " Requested changes for this fitting, which take priority over image 2 and over the dress notes: \"{note}\". "
+    "These are about the DRESS: words like arms, shoulders, straps, neck, chest, waist, back or legs mean the "
+    "parts of the garment there (sleeves, straps, neckline, bodice, skirt, hem), never the person's body. The only "
+    "things besides the dress that may change are the person's hair color and fingernail/toenail polish color, and "
+    "only if the request asks for that." + PERSON_RULES
+)
+
+
+def request_text(note: str) -> str:
+    """A one-off request written in the atelier's logbook for a single fitting (e.g. "make it a mini dress")."""
+    note = (note or "").strip().rstrip(".")
+    return REQUEST_PROMPT.format(note=note) if note else ""
 
 
 def load_env():
@@ -78,6 +91,8 @@ def load_library():
         lib = {}
     lib.setdefault("dresses", {})
     lib.setdefault("people", {})
+    lib.setdefault("gallery", [None, None, None])  # results hung in the atelier's frames
+    lib.setdefault("requests", {})                 # result key -> the one-off request it was made with
     return lib
 
 
@@ -85,6 +100,21 @@ def save_library(lib):
     tmp = LIBRARY.with_suffix(".tmp")
     tmp.write_text(json.dumps(lib, indent=2, ensure_ascii=False))
     tmp.replace(LIBRARY)
+
+
+def get_request(key: str) -> str:
+    return load_library()["requests"].get(key, "")
+
+
+def set_request(key: str, note: str):
+    """Remember (or forget, when note is empty) the request a result was made with."""
+    with lib_lock:
+        lib = load_library()
+        if note:
+            lib["requests"][key] = note
+        else:
+            lib["requests"].pop(key, None)
+        save_library(lib)
 
 
 def meta(kind, path: Path):
@@ -310,9 +340,9 @@ def notes_text(dress: Path, person: Path):
     return extra
 
 
-def try_on(person: Path, dress: Path, kind="tryon") -> bytes:
+def try_on(person: Path, dress: Path, kind="tryon", note="") -> bytes:
     p_img, d_img = load_img(person), load_img(dress)
-    extra = notes_text(dress, person)
+    extra = notes_text(dress, person) + request_text(note)
     if _mode["multi"]:
         r = post_edit({
             "model": MODEL,
@@ -509,6 +539,12 @@ def index():
                            price=PRICE_PER_IMAGE, has_key=bool(os.environ.get("XAI_API_KEY")))
 
 
+@app.get("/atelier")
+def atelier():
+    """Prototype: the app as an illustrated dressmaker's workroom."""
+    return render_template("atelier.html", price=PRICE_PER_IMAGE, has_key=bool(os.environ.get("XAI_API_KEY")))
+
+
 @app.get("/api/state")
 def state():
     folder = render_dir()
@@ -541,11 +577,85 @@ def set_meta():
     return jsonify(ok=True)
 
 
+def plan_pairs(items, folder: Path):
+    """Explicit {dress, person, retake, note} pairs (the atelier's logbook)
+    -> ([(dress, person, target, retake, note)], skipped).
+    A new pair renders into today's folder; an existing pair with retake gets the next free take beside it
+    and, without a note of its own, keeps the request the existing look was made with."""
+    ds, ps = {p.name: p for p in dresses()}, {p.name: p for p in people()}
+    days = all_render_dirs() or [folder]
+    plan, skipped = [], 0
+    for item in items:
+        d, p = ds.get(item.get("dress")), ps.get(item.get("person"))
+        existing = d and p and next((f / out_name(d, p) for f in days if (f / out_name(d, p)).exists()), None)
+        if not (d and p) or (existing and not item.get("retake")):
+            skipped += 1
+            continue
+        target = next_take_path(existing) if existing else folder / out_name(d, p)
+        if any(x[2] == target for x in plan):
+            skipped += 1
+            continue
+        note = (item.get("note") or "").strip()[:600] or (get_request(key_of(existing)) if existing else "")
+        plan.append((d, p, target, bool(existing), note))
+    return plan, skipped
+
+
+def render_into(person: Path, dress: Path, target: Path, kind: str, note=""):
+    try:
+        save_png(try_on(person, dress, kind, note), target)
+        set_request(key_of(target), note)
+    finally:
+        if target.exists() and target.stat().st_size == 0:
+            target.unlink()  # a reserved take that failed
+
+
+def render_pairs(items):
+    folder = render_dir()
+    folder.mkdir(exist_ok=True)
+    with lock:
+        plan, skipped = plan_pairs(items, folder)
+        for _d, _p, target, retake, _n in plan:
+            if retake:
+                target.touch()  # reserve the take number
+    tasks = [(label_for(d, p) + (" (new take)" if retake else ""),
+              lambda d=d, p=p, t=target, k="newtake" if retake else "tryon", n=note: render_into(p, d, t, k, n),
+              *([key_of(target)] if retake else []))
+             for d, p, target, retake, note in plan]
+    if err := start_job(tasks, folder):
+        for _d, _p, target, retake, _n in plan:
+            if retake:
+                target.unlink(missing_ok=True)
+        return err
+    return jsonify(started=len(plan), skipped=skipped, folder=folder.name, hint="")
+
+
+@app.post("/api/gallery")
+def gallery():
+    """Hang a result in one of the atelier's three frames (key None takes it down)."""
+    b = request.get_json(force=True)
+    slot, key = b.get("slot"), b.get("key")
+    if slot not in (0, 1, 2):
+        return jsonify(error="There are only three frames."), 400
+    if key is not None:
+        fold, _, name = key.partition("/")
+        path = BASE / Path(fold).name / Path(name).name
+        if not (folder_date(path.parent) and path.is_file()):
+            return jsonify(error="That look doesn't exist."), 404
+        key = key_of(path)
+    with lib_lock:
+        lib = load_library()
+        lib["gallery"][slot] = key
+        save_library(lib)
+    return jsonify(ok=True, gallery=lib["gallery"])
+
+
 @app.post("/render")
 def render():
     if err := need_key():
         return err
     want = request.get_json(silent=True) or {}
+    if "pairs" in want:
+        return render_pairs(want["pairs"])
     ds, ps = dresses(), people()
     if "dresses" in want:
         ds = [p for p in ds if p.name in set(want["dresses"])]
@@ -558,7 +668,7 @@ def render():
     days = all_render_dirs() or [folder]  # a pair done on any day counts as done
     pairs = [(d, p) for d in ds for p in ps
              if not any((f / out_name(d, p)).exists() for f in days)]
-    tasks = [(label_for(d, p), lambda d=d, p=p: save_png(try_on(p, d), folder / out_name(d, p)))
+    tasks = [(label_for(d, p), lambda d=d, p=p: render_into(p, d, folder / out_name(d, p), "tryon"))
              for d, p in pairs]
     if err := start_job(tasks, folder):
         return err
@@ -575,8 +685,10 @@ def redo():
     path, d, p = result_target(request.get_json(force=True))
     path.parent.mkdir(exist_ok=True)
 
+    note = get_request(key_of(path))  # keep the request the look was made with
+
     def task():
-        raw = try_on(p, d, "redo")
+        raw = try_on(p, d, "redo", note)
         archive(path)
         save_png(raw, path)
 
@@ -626,6 +738,7 @@ def duplicate():
         for old in previous_versions(path):
             suffix = old.stem[len(path.stem) + 1:]
             shutil.copy2(old, old.parent / f"{new.stem}.{suffix}{new.suffix}")
+    set_request(key_of(new), get_request(key_of(path)))
     return jsonify(ok=True, result=new.name, key=key_of(new))
 
 
@@ -638,9 +751,12 @@ def newtake():
     with lock:
         new = next_take_path(path)
         new.touch()  # reserve the name so a quick second click gets the next number
+    note = get_request(key_of(path))
+
     def task():
         try:
-            save_png(try_on(p, d, "newtake"), new)
+            save_png(try_on(p, d, "newtake", note), new)
+            set_request(key_of(new), note)
         finally:
             if new.exists() and new.stat().st_size == 0:
                 new.unlink()
@@ -712,8 +828,11 @@ def restore_route():
     item = day / "_deleted" / Path(item_name).name
     if not (folder_date(day) and item_name and item.is_dir() and list_images(item)):
         return jsonify(error="That deleted result is gone."), 404
+    old_key = f"{day.name}/{list_images(item)[0].name}"
     with lock:
         target = restore_item(day, item)
+    if key_of(target) != old_key:  # it came back as a new take; its request follows it
+        set_request(key_of(target), get_request(old_key))
     return jsonify(ok=True, result=target.name, key=key_of(target))
 
 
