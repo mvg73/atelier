@@ -6,7 +6,7 @@ You pick a dress from the game and a photo of a person (a "model"). The app asks
 **Grok** (an AI made by xAI) to make a new picture of that person wearing that dress.
 It all happens in a cozy painted dressmaker's room:
 
-![The atelier](static/atelier/room.jpg)
+![The atelier](static/atelier/room-screenshot.jpg)
 
 ---
 
