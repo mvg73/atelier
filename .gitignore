@@ -1,20 +1,39 @@
-# secrets
+# --- secrets: your xAI (Grok) key lives in .env and must never be uploaded ---
 .env
+.env.*
+!.env.example
 
-# environment / caches
-.venv/
-__pycache__/
-*.log
+# --- personal photos and pictures: never upload any image except the room artwork ---
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.heic
+*.bmp
+!static/atelier/room.jpg
 
-# personal data and generated output
+# --- personal data and everything the app makes ---
 people/
+models/
+dresses/
 Render*/
 spend.jsonl
 library.json
+settings.json
 *.tmp
 
-# loose images in the project root
-/*.png
-/*.jpg
-/*.jpeg
-/*.webp
+# --- Python environment and caches ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.log
+
+# --- system and editor clutter ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp

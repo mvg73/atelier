@@ -99,6 +99,9 @@
   .steparrow { position:absolute; top:76%; font:2.2cqw/1 var(--serif); color:#f3e8cf55; pointer-events:none; }
   .plaque { position:absolute; left:1%; top:1.2%; display:flex; gap:.6cqw; align-items:center; }
   .plaque span { font:1.4cqw var(--serif); color:#f6e3b0; text-shadow:0 0 .4cqw #000, 0 0 1cqw #000; }
+  .plaque button { font:.95cqw var(--serif); color:#f6e3b0; padding:.2cqw .6cqw; border:.08cqw solid #f6e3b066;
+              border-radius:.6cqw; background:#00000055; cursor:pointer; transition:box-shadow .15s; }
+  .plaque button:hover, .plaque button:focus-visible { outline:none; box-shadow:0 0 0 .1cqw #ffe2a0, 0 0 1.2cqw .3cqw #ffc65a99; }
   .plaque a { font:.95cqw var(--serif); color:#f6e3b0; text-decoration:none; padding:.2cqw .6cqw; border:.08cqw solid #f6e3b066;
               border-radius:.6cqw; background:#00000055; transition:box-shadow .15s; }
   .plaque a:hover, .plaque a:focus-visible { outline:none; box-shadow:0 0 0 .1cqw #ffe2a0, 0 0 1.2cqw .3cqw #ffc65a99; }
@@ -115,7 +118,7 @@
             font:1.4cqw/3.2cqw system-ui; text-align:center; transition:transform .2s, opacity .2s, box-shadow .15s; box-shadow:0 .15cqw .4cqw #000a; }
   .pins.open .pinbtn { transform:translate(-50%, -50%) scale(1); opacity:1; pointer-events:auto; }
   .pinbtn:hover, .pinbtn:focus-visible { outline:none; box-shadow:0 0 0 .15cqw #ffe2a0, 0 0 1.6cqw .5cqw #ffc65aaa; }
-  .pinbtn:disabled { filter:grayscale(1); opacity:.45 !important; cursor:default; box-shadow:none; }
+  .pins.open .pinbtn:disabled { filter:grayscale(1); opacity:.45; cursor:default; box-shadow:none; }   /* greyed out only while the fan is open */
 
   /* ----- close-up panels ----- */
   .scrim { position:fixed; inset:0; z-index:30; background:#0d0805cc; display:none; align-items:center; justify-content:center; }
@@ -300,6 +303,27 @@
   .plan .empty { font:22px/1.35 var(--hand); color:var(--pencil); margin-top:30px; }
   .plan .empty a { color:#8e2424; text-decoration:underline; cursor:pointer; border-radius:4px; padding:0 3px; }
   .plan .tools a:hover, .plan .empty a:hover, .perm:hover, .perm .t a:hover, .reqnote:hover { box-shadow:0 0 0 2px #ffe2a0, 0 0 14px 4px #ffc65a99; outline:none; }
+  /* settings */
+  .settings { width:min(620px, 94vw); transform:none; }
+  .settings .setrow { margin-top:16px; }
+  .settings .setrow > label { display:block; font:700 20px var(--hand); margin:0 0 4px; }
+  .settings .pathrow { display:flex; gap:8px; }
+  .settings input[type=text] { flex:1; font:14px/1.3 ui-monospace, monospace; background:#fffaf0; border:1px solid #b9a57e;
+          border-radius:6px; padding:8px; color:var(--ink); }
+  .settings input[type=text]:focus { outline:none; box-shadow:0 0 0 2px #e8c070; }
+  .settings .stat { font:17px var(--hand); margin-top:3px; color:#4f6b2e; }
+  .settings .stat.bad { color:#a8392b; }
+  .settings .check { margin:18px 0 8px; font:19px var(--hand); }
+  .settings code { font:14px ui-monospace, monospace; }
+  .settings .err { color:#a8392b; font:17px var(--hand); min-height:20px; margin-top:6px; }
+  .browser { margin-top:10px; border:1px solid #b9a57e; border-radius:8px; background:#fffaf0; padding:8px; }
+  .browser .bhead { display:flex; gap:8px; align-items:center; font:13px ui-monospace, monospace; color:var(--pencil); word-break:break-all; }
+  .browser .bhead .pbtn { flex:none; white-space:nowrap; padding:4px 12px; font-size:14px; }
+  .browser .blist { max-height:220px; overflow:auto; margin:8px 0; display:flex; flex-direction:column; gap:2px; }
+  .browser .blist button { text-align:left; border:0; background:none; padding:5px 8px; border-radius:5px; font:15px system-ui, sans-serif; color:var(--ink); cursor:pointer; }
+  .browser .blist button:hover, .browser .blist button:focus-visible { outline:none; background:#f3e8cf; box-shadow:0 0 0 2px #f0c060, 0 0 10px 2px #ffc65a88; }
+  .browser .row { display:flex; justify-content:space-between; align-items:center; margin:0; }
+  .browser .bcount { font:16px var(--hand); color:var(--pencil); }
   .narrow { position:fixed; bottom:10px; left:50%; transform:translateX(-50%); z-index:40; background:var(--paper); color:var(--ink);
             padding:6px 14px; border-radius:8px; font:15px var(--serif); display:none; }
   .narrow a { color:#8e2424; }
@@ -309,7 +333,7 @@
 <body>
 <div class="room" id="room">
   <!-- scenery overlays -->
-  <div class="plaque"><span>Dressmaker Atelier</span><a href="/" title="The plain view of the app">Plain view</a></div>
+  <div class="plaque"><span>Dressmaker Atelier</span><a href="/" id="plainLink" title="The plain view of the app"{% if not plain_view %} hidden{% endif %}>Plain view</a><button id="setBtn" title="Folders and options">⚙ Settings</button></div>
   <div class="doortag" id="doortag"></div>
   <div class="bill" id="bill"></div>
   <div class="steam" id="steam"><i></i><i></i><i></i></div>
@@ -405,6 +429,26 @@
   <div style="font:18px var(--hand)" id="pkHint"></div>
   <div class="picks" id="pkGrid"></div>
   <div class="slots" id="pkSlots"></div>
+</div></div>
+
+<div class="scrim" id="pSettings"><div class="panel note settings">
+  <button class="closex" data-close style="color:var(--ink)">✕</button>
+  <h2>The atelier's settings</h2>
+  <div class="setrow"><label for="sDress">Dresses folder</label>
+    <div class="pathrow"><input type="text" id="sDress" spellcheck="false" autocomplete="off"><button class="pbtn" data-browse="sDress">Browse…</button></div>
+    <div class="stat" id="sDressStat"></div></div>
+  <div class="setrow"><label for="sModels">Models folder</label>
+    <div class="pathrow"><input type="text" id="sModels" spellcheck="false" autocomplete="off"><button class="pbtn" data-browse="sModels">Browse…</button></div>
+    <div class="stat" id="sModelsStat"></div></div>
+  <div class="browser" id="sBrowser" hidden>
+    <div class="bhead"><button class="pbtn" id="bUp" title="Up one folder">‹ up</button><span id="bPath"></span></div>
+    <div class="blist" id="bList"></div>
+    <div class="row"><span class="bcount" id="bCount"></span><span><button class="pbtn" id="bCancel">Close</button> <button class="pbtn primary" id="bUse">Use this folder</button></span></div>
+  </div>
+  <label class="check"><input type="checkbox" id="sPlain"> Show the plain view at <code>/</code> (the original page)</label>
+  <div class="hint">Looks you've already made keep their files. Their dress and model names show up when those files are in the chosen folders. Names and notes follow the file names, so moving the same files keeps them.</div>
+  <div class="err" id="sErr"></div>
+  <div class="row"><button class="pbtn" data-close>Cancel</button><button class="pbtn primary" id="sSave">Save</button></div>
 </div></div>
 
 <div class="scrim" id="pCat"><div class="panel note catnotes">
@@ -1308,7 +1352,67 @@ window.addEventListener("storage", e => {
   if (isOpen("pBook") && !document.activeElement.matches(".reqnote")) renderBook();
 });
 
-load().then(() => { loadSpend(); poll(); });
+// ---------- settings ----------
+const SET = { browseFor: null, path: null, parent: null, timers: {} };
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+function showStat(id, kind, rep) {
+  const st = $(id + "Stat");
+  st.className = "stat" + (!rep.exists || !rep.count ? " bad" : "");
+  st.textContent = !rep.exists ? "folder not found"
+    : kind === "dresses" ? (rep.count ? `${plural(rep.count, "dress", "dresses")} found (PNG)` : "no dress PNGs in this folder")
+    : (rep.count ? `${plural(rep.count, "model photo", "model photos")} found` : "no photos in this folder");
+}
+async function checkFolder(id) {
+  const kind = id === "sDress" ? "dresses" : "models";
+  try {
+    const b = await (await fetch(`/api/browse?path=${encodeURIComponent($(id).value)}`)).json();
+    showStat(id, kind, { exists: b.exists, count: b[kind] });
+  } catch {}
+}
+async function openSettings() {
+  $("sErr").textContent = ""; $("sBrowser").hidden = true;
+  let s;
+  try { s = await (await fetch("/api/settings")).json(); } catch { return catSay("Couldn't read the settings.", "upset"); }
+  $("sDress").value = s.dresses.path; $("sModels").value = s.models.path; $("sPlain").checked = s.plain_view;
+  showStat("sDress", "dresses", s.dresses); showStat("sModels", "models", s.models);
+  openPanel("pSettings");
+}
+for (const id of ["sDress", "sModels"]) $(id).addEventListener("input", () => {
+  clearTimeout(SET.timers[id]); SET.timers[id] = setTimeout(() => checkFolder(id), 300);
+});
+async function browseTo(path) {
+  let b;
+  try { b = await (await fetch(`/api/browse?path=${encodeURIComponent(path || "")}`)).json(); } catch { return; }
+  SET.path = b.path; SET.parent = b.parent;
+  $("bPath").textContent = b.path; $("bUp").disabled = !b.parent;
+  const kind = SET.browseFor === "sDress" ? "dresses" : "models";
+  $("bCount").textContent = kind === "dresses" ? `here: ${plural(b.dresses, "dress PNG", "dress PNGs")}` : `here: ${plural(b.models, "photo", "photos")}`;
+  const list = $("bList"); list.innerHTML = "";
+  if (!b.folders.length) list.append(el("div", "bcount", "No folders inside this one."));
+  for (const f of b.folders) { const btn = el("button", "", "📁 " + f.name); btn.onclick = () => browseTo(f.path); list.append(btn); }
+}
+document.querySelectorAll("[data-browse]").forEach(btn => btn.onclick = () => {
+  SET.browseFor = btn.dataset.browse; $("sBrowser").hidden = false; browseTo($(SET.browseFor).value);
+});
+$("bUp").onclick = () => { if (SET.parent) browseTo(SET.parent); };
+$("bCancel").onclick = () => { $("sBrowser").hidden = true; };
+$("bUse").onclick = () => { $(SET.browseFor).value = SET.path; $("sBrowser").hidden = true; checkFolder(SET.browseFor); };
+$("setBtn").onclick = e => { e.stopPropagation(); openSettings(); };
+$("sSave").onclick = async () => {
+  const { ok, j } = await api("/api/settings", { dress_dir: $("sDress").value, models_dir: $("sModels").value, plain_view: $("sPlain").checked });
+  if (!ok) { $("sErr").textContent = j.error || "Couldn't save."; return; }
+  closePanel("pSettings");
+  $("plainLink").hidden = !j.plain_view;
+  await load();
+  catSay(`Settings saved: ${plural(j.dresses.count, "dress", "dresses")}, ${plural(j.models.count, "model", "models")}` +
+         `${j.plain_view ? "" : ", plain view off"}.` + (j.warnings.length ? " " + j.warnings.join(" ") : ""), j.warnings.length ? "upset" : "alert", 9000);
+};
+if (new URLSearchParams(location.search).has("settings")) openSettings();
+
+load().then(() => {
+  loadSpend(); poll();
+  {% if not has_key %}catSay("No Grok key yet! Put XAI_API_KEY=... in the .env file in the app's folder, then restart the app. (See the README, step 4.)", "upset", 0);{% endif %}
+});
 </script>
 </body>
 </html>

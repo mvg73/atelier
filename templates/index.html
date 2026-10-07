@@ -226,6 +226,7 @@
   <button id="render">Try On</button>
   <button class="ghost" id="refresh">Refresh</button>
   <a class="ghost atelier" href="/atelier" title="Try the illustrated workroom prototype">Atelier ↗</a>
+  <a class="ghost atelier" href="/atelier?settings" title="Folders, and whether this plain view is shown">⚙ Settings</a>
   <div id="spend" class="spend" title=""></div>
   <div>
     <div id="quip"><span class="needle"></span><span class="text"></span></div>
@@ -235,7 +236,7 @@
   </div>
 </header>
 <main>
-  {% if not has_key %}<div class="err">XAI_API_KEY is not set. Add a line <code>XAI_API_KEY=xai-...</code> to ~/dressmaker/.env and restart.</div>{% endif %}
+  {% if not has_key %}<div class="err">XAI_API_KEY is not set. Add a line <code>XAI_API_KEY=xai-...</code> to the <code>.env</code> file in the app's folder and restart.</div>{% endif %}
   <section>
     <div class="head"><h2>Dresses</h2><span class="sel" id="dresses-sel"></span>
       <button class="ghost" data-all="dresses">All</button><button class="ghost" data-none="dresses">None</button></div>
@@ -529,7 +530,7 @@ async function load() {
   folder = s.folder; lib = s.library; results = s.results;
   avail.dresses = s.dresses; avail.people = s.people;
   pickTiles("dresses"); pickTiles("people"); resultTiles(results); loadTrash();
-  $("folder").textContent = "~/dressmaker/Render… (all days, newest first) · click an image to open it";
+  $("folder").textContent = "Render… folders (all days, newest first) · click an image to open it";
   updateCount();
   refreshViewer();
 }
@@ -984,7 +985,7 @@ async function loadSpend() {
             (L.since ? ` since ${L.since}` : "") + `. Today: ${L.calls_today} calls.\n` +
             "Costs are the exact amounts xAI reports for each call.";
   if (!X.configured)
-    tip += "\n\nTo also show your xAI credit balance, add XAI_MANAGEMENT_KEY and XAI_TEAM_ID to ~/dressmaker/.env and restart.";
+    tip += "\n\nTo also show your xAI credit balance, add XAI_MANAGEMENT_KEY and XAI_TEAM_ID to the .env file in the app's folder and restart.";
   else if (X.error) tip += "\n\nCouldn't read your xAI balance: " + X.error;
   else tip += "\n\nBalance is xAI's prepaid credit ledger. xAI posts spending at the end of each billing cycle, so it can read higher than the console mid-cycle.";
   box.title = tip;

@@ -11,12 +11,13 @@ from datetime import date, datetime
 from pathlib import Path
 
 import requests
-from flask import Flask, abort, jsonify, render_template, request, send_from_directory
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, url_for
 from PIL import Image, ImageOps
 
 BASE = Path(__file__).resolve().parent
-DRESS_DIR = Path.home() / "Dressmaker-drive_c"
-PEOPLE_DIR = BASE / "people"
+DEFAULT_DRESS_DIR = Path.home() / "Dressmaker-drive_c"
+DEFAULT_PEOPLE_DIR = BASE / "people"
+SETTINGS = BASE / "settings.json"
 LIBRARY = BASE / "library.json"
 IMG_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
 MODEL = os.environ.get("XAI_IMAGE_MODEL", "grok-imagine-image-2.0")
@@ -121,6 +122,48 @@ def meta(kind, path: Path):
     return load_library()[kind].get(path.name, {})
 
 
+# ---------- settings (folders, plain view) ----------
+
+def load_settings():
+    try:
+        s = json.loads(SETTINGS.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        s = {}
+    s.setdefault("dress_dir", str(DEFAULT_DRESS_DIR))
+    s.setdefault("models_dir", str(DEFAULT_PEOPLE_DIR))
+    s.setdefault("plain_view", True)
+    return s
+
+
+def save_settings(s):
+    tmp = SETTINGS.with_suffix(".tmp")
+    tmp.write_text(json.dumps(s, indent=2, ensure_ascii=False))
+    tmp.replace(SETTINGS)
+
+
+def as_dir(text) -> Path:
+    """A folder as the user typed it (~ expanded, made absolute); shortcuts/symlinks keep their own name."""
+    return Path(os.path.abspath(os.path.expanduser(str(text or "").strip())))
+
+
+def dress_dir() -> Path:
+    return as_dir(load_settings()["dress_dir"])
+
+
+def people_dir() -> Path:
+    return as_dir(load_settings()["models_dir"])
+
+
+def folder_report(path: Path, kind: str):
+    """Does the folder exist, and how many usable images does it hold (dresses are PNG only)?"""
+    if not path.is_dir():
+        return {"path": str(path), "exists": False, "count": 0}
+    files = list_images(path)
+    if kind == "dresses":
+        files = [f for f in files if f.suffix.lower() == ".png"]
+    return {"path": str(path), "exists": True, "count": len(files)}
+
+
 # ---------- files ----------
 
 def list_images(folder: Path):
@@ -130,11 +173,11 @@ def list_images(folder: Path):
 
 
 def dresses():
-    return [p for p in list_images(DRESS_DIR) if p.suffix.lower() == ".png"]
+    return [p for p in list_images(dress_dir()) if p.suffix.lower() == ".png"]
 
 
 def people():
-    return list_images(PEOPLE_DIR)
+    return list_images(people_dir())
 
 
 def render_dir():
@@ -318,7 +361,7 @@ _mode = {"multi": True}
 def post_edit(body):
     key = os.environ.get("XAI_API_KEY")
     if not key:
-        raise RuntimeError("XAI_API_KEY is not set (put it in ~/dressmaker/.env)")
+        raise RuntimeError("XAI_API_KEY is not set (put it in the .env file in the app's folder)")
     for attempt in range(3):
         r = requests.post(EDIT_URL, json=body, timeout=300,
                           headers={"Authorization": f"Bearer {key}"})
@@ -505,7 +548,7 @@ def run_job(tasks):
 
 def need_key():
     if not os.environ.get("XAI_API_KEY"):
-        return jsonify(error="XAI_API_KEY is not set. Add it to ~/dressmaker/.env and restart."), 400
+        return jsonify(error="No Grok key yet. Put XAI_API_KEY=... in the .env file in the app's folder, then restart the app."), 400
     return None
 
 
@@ -535,14 +578,17 @@ def result_target(body):
 
 @app.get("/")
 def index():
-    return render_template("index.html", dress_dir=DRESS_DIR, people_dir=PEOPLE_DIR,
+    if not load_settings()["plain_view"]:
+        return redirect(url_for("atelier"))
+    return render_template("index.html", dress_dir=dress_dir(), people_dir=people_dir(),
                            price=PRICE_PER_IMAGE, has_key=bool(os.environ.get("XAI_API_KEY")))
 
 
 @app.get("/atelier")
 def atelier():
     """Prototype: the app as an illustrated dressmaker's workroom."""
-    return render_template("atelier.html", price=PRICE_PER_IMAGE, has_key=bool(os.environ.get("XAI_API_KEY")))
+    return render_template("atelier.html", price=PRICE_PER_IMAGE, has_key=bool(os.environ.get("XAI_API_KEY")),
+                           plain_view=load_settings()["plain_view"])
 
 
 @app.get("/api/state")
@@ -836,6 +882,50 @@ def restore_route():
     return jsonify(ok=True, result=target.name, key=key_of(target))
 
 
+@app.get("/api/settings")
+def get_settings():
+    s = load_settings()
+    return jsonify(plain_view=s["plain_view"],
+                   dresses=folder_report(as_dir(s["dress_dir"]), "dresses"),
+                   models=folder_report(as_dir(s["models_dir"]), "models"))
+
+
+@app.post("/api/settings")
+def set_settings():
+    b = request.get_json(force=True)
+    with lock:
+        if job["running"]:
+            return jsonify(error="Fittings are being made right now. Change settings when they're done."), 409
+    s = load_settings()
+    for key, label in (("dress_dir", "dresses"), ("models_dir", "models")):
+        if key in b:
+            path = as_dir(b[key])
+            if not path.is_dir():
+                return jsonify(error=f"The {label} folder doesn't exist: {path}"), 400
+            s[key] = str(path)
+    if "plain_view" in b:
+        s["plain_view"] = bool(b["plain_view"])
+    save_settings(s)
+    d, m = folder_report(as_dir(s["dress_dir"]), "dresses"), folder_report(as_dir(s["models_dir"]), "models")
+    warn = [w for w, bad in (("No dress PNGs in that dresses folder.", not d["count"]),
+                             ("No model photos in that models folder.", not m["count"])) if bad]
+    return jsonify(ok=True, plain_view=s["plain_view"], dresses=d, models=m, warnings=warn)
+
+
+@app.get("/api/browse")
+def browse():
+    """Sub-folders of a folder, for picking the dresses/models folder. Lists folder names only, never file contents."""
+    asked = as_dir(request.args.get("path") or Path.home())
+    path = asked if asked.is_dir() else Path.home()
+    try:
+        subs = sorted((p for p in path.iterdir() if p.is_dir() and not p.name.startswith(".")), key=lambda p: p.name.lower())
+    except PermissionError:
+        subs = []
+    return jsonify(path=str(path), exists=asked.is_dir(), parent=str(path.parent) if path.parent != path else None,
+                   dresses=folder_report(path, "dresses")["count"], models=folder_report(path, "models")["count"],
+                   folders=[{"name": p.name, "path": str(p)} for p in subs[:300]])
+
+
 @app.get("/api/spend")
 def spend():
     return jsonify(local=spend_summary(), xai=xai_balance())
@@ -849,12 +939,12 @@ def status():
 
 @app.get("/img/dress/<path:name>")
 def dress_img(name):
-    return send_from_directory(DRESS_DIR, name)
+    return send_from_directory(dress_dir(), name)
 
 
 @app.get("/img/person/<path:name>")
 def person_img(name):
-    return send_from_directory(PEOPLE_DIR, name)
+    return send_from_directory(people_dir(), name)
 
 
 @app.get("/output/<folder>/<path:name>")
@@ -865,5 +955,5 @@ def output_img(folder, name):
 
 
 if __name__ == "__main__":
-    PEOPLE_DIR.mkdir(exist_ok=True)
+    DEFAULT_PEOPLE_DIR.mkdir(exist_ok=True)
     app.run(host="127.0.0.1", port=5000, debug=False)
